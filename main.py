@@ -1,3 +1,32 @@
+import os
+import re
+import json
+import time
+import uuid
+import hmac
+import hashlib
+import isodate
+import redis
+import logging
+import stripe
+import random
+import asyncpg
+import asyncio
+from collections import defaultdict
+from typing import List, Optional, Dict, Any
+from datetime import datetime, timedelta
+
+
+import requests
+from fastapi import FastAPI, HTTPException, Request, Depends, Header
+from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field, HttpUrl, validator
+from prometheus_client import Counter, Histogram, Gauge, generate_latest
+
+from openai import OpenAI
+from googleapiclient.discovery import build
+
 # =========================
 # 💵 Billing système complet
 # =========================
@@ -32,35 +61,6 @@ def create_stripe_usage_record(api_key: str, amount_usd: float, meta: Dict[str, 
         
     except stripe.error.StripeError as e:
         logger.error ("message d'erreur")
-        
-import os
-import re
-import json
-import time
-import uuid
-import hmac
-import hashlib
-import isodate
-import redis
-import logging
-import stripe
-import random
-import asyncpg
-import asyncio
-from collections import defaultdict
-from typing import List, Optional, Dict, Any
-from datetime import datetime, timedelta
-from typing import List, Optional, Dict, Any
-
-import requests
-from fastapi import FastAPI, HTTPException, Request, Depends, Header
-from fastapi.responses import HTMLResponse, PlainTextResponse
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, HttpUrl, validator
-from prometheus_client import Counter, Histogram, Gauge, generate_latest
-
-from openai import OpenAI
-from googleapiclient.discovery import build
 
 # =========================
 # 🔑 ENV & Configuration
