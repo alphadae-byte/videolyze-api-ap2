@@ -19,7 +19,7 @@ from datetime import datetime, timedelta
 
 import requests
 from fastapi import FastAPI, HTTPException, Request, Depends, Header
-from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, HttpUrl, validator
 from prometheus_client import Counter, Histogram, Gauge, generate_latest
@@ -213,7 +213,7 @@ def ensure_pg_initialized():
         pg_init_task = asyncio.create_task(init_pg_pool())
 
 # =========================
-# 🔐 Stripe customer mapping
+# 🔒 Stripe customer mapping
 # =========================
 
 def get_stripe_customer_for_api_key(api_key: str) -> Optional[Dict[str, str]]:
@@ -757,10 +757,6 @@ def fallback_sentiment_analysis(comments: List[str]) -> SentimentResult:
 # 💵 Billing système complet
 # =========================
 
-def estimate_cost_usd(tokens_used: int) -> float:
-    # Estimation moyenne : $0.0003 / 1K tokens
-    return round((tokens_used / 1000.0) * 0.0003, 6)
-
 def create_stripe_usage_record(api_key: str, amount_usd: float, meta: Dict[str, Any]):
     """Crée un usage record Stripe fiable"""
     if not STRIPE_API_KEY:
@@ -961,7 +957,7 @@ def compute_product_badge(analyses: List[AnalyzeResponse]) -> Dict[str, Any]:
     }
 
 # =========================
-# 🌐 Endpoints
+# 🌍 Endpoints
 # =========================
 
 @app.get("/health")
@@ -985,6 +981,51 @@ def health():
 def metrics():
     """Endpoint Prometheus metrics"""
     return generate_latest()
+
+@app.get("/agents/manifest")
+def agent_manifest():
+    """
+    Endpoint de manifest AP2 - Décrit les capacités de l'API Videolyze
+    pour que les Shopping Agents puissent découvrir et utiliser le service
+    """
+    return JSONResponse({
+        "name": "videolyze",
+        "version": APP_VERSION,
+        "description": "Video intelligence service for product reviews (YouTube, TikTok).",
+        "capabilities": [
+            {
+                "name": "analyze_video",
+                "endpoint": "/analyze/video",
+                "input": {"url": "HttpUrl", "lang": "string", "max_comments": "int"},
+                "output": {"summary": "bullets[5]", "sentiment": "label/score", "flags": "list"},
+                "description": "Analyze a single video for sentiment, summary and red flags"
+            },
+            {
+                "name": "analyze_multi",
+                "endpoint": "/analyze/multi",
+                "input": {"urls": ["HttpUrl"], "lang": "string", "max_comments": "int"},
+                "output": {"aggregate": "sentiment/flags", "comparisons": "list"},
+                "description": "Analyze multiple videos and provide aggregated insights"
+            },
+            {
+                "name": "badge_product",
+                "endpoint": "/badge/product",
+                "input": {"product_name": "string", "video_urls": ["HttpUrl"], "lang": "string"},
+                "output": {"badge": "score+tooltip", "analyses": "list"},
+                "description": "Generate a trust badge for a product based on video reviews analysis"
+            }
+        ],
+        "auth": {"type": "api_key", "header": "x-api-key"},
+        "rate_limits": {"requests_per_hour": MAX_REQUESTS_PER_HOUR},
+        "platforms_supported": ["youtube", "tiktok"],
+        "languages_supported": ["fr", "en"],
+        "pricing": {"model": "usage_based", "estimated_cost_per_1k_tokens": 0.0003},
+        "contact": {"support": "support@videolyze.com"},
+        "integration": {
+            "compatible_with": ["AP2", "A2A", "MCP"],
+            "use_case": "product_intelligence_for_shopping_agents"
+        }
+    })
 
 # ---- UI minimale pour test (development/staging uniquement)
 @app.get("/", response_class=HTMLResponse)
@@ -1016,7 +1057,7 @@ def home():
         <hr/>
         <p style="color:#666">Remplacez 'your-api-key-here' par votre vraie clé API.</p>
         <p style="color:#999;font-size:0.9em">Environment: {ENVIRONMENT}</p>
-        <p><a href="/metrics" target="_blank">📊 Métriques Prometheus</a> | <a href="/health">🔍 Health Check</a></p>
+        <p><a href="/metrics" target="_blank">📊 Métriques Prometheus</a> | <a href="/health">🔍 Health Check</a> | <a href="/agents/manifest">🤖 Agent Manifest</a></p>
       </body>
     </html>
     """
@@ -1154,52 +1195,6 @@ def badge_product(body: BadgeProductBody, api_key: str = Depends(require_api_key
             api_calls_total.labels(endpoint="badge_product", api_key_hash=api_key_hash, status="error").inc()
             logger.error(f"Erreur inattendue badge_product: {e}")
             raise HTTPException(status_code=500, detail="Erreur interne du serveur")
-
-# =========================
-# 🤝 Agents manifest (développement/staging uniquement)
-# =========================
-
-@app.get("/agents/manifest")
-def agents_manifest():
-    """
-    Manifest pour agents (MCP/A2A-like) : expose les capacités de l'API.
-    Désactivé en production pour éviter l'exposition de l'architecture.
-    """
-    if ENVIRONMENT == "production":
-        raise HTTPException(status_code=404, detail="Not Found")
-    
-    return {
-        "name": "videolyze",
-        "version": APP_VERSION,
-        "environment": ENVIRONMENT,
-        "capabilities": [
-            {
-                "name": "analyze_video",
-                "endpoint": "/analyze/video",
-                "input": {"url": "HttpUrl", "lang": "string", "max_comments": "int<=100"},
-                "output": {"summary": "bullets[5]", "sentiment": "label/score/counts", "flags": "list"}
-            },
-            {
-                "name": "analyze_multi",
-                "endpoint": "/analyze/multi",
-                "input": {"urls": "HttpUrl[]<=10", "lang": "string"},
-                "output": {"results": "AnalyzeResponse[]", "aggregate": "object"}
-            },
-            {
-                "name": "badge_product",
-                "endpoint": "/badge/product",
-                "input": {"product_name": "string", "video_urls": "HttpUrl[]", "lang": "string"},
-                "output": {"badge": "label/score/explanation", "analyses": "AnalyzeResponse[]"}
-            }
-        ],
-        "auth": {"type": "api_key", "header": "x-api-key"},
-        "rate_limits": {"requests_per_hour": MAX_REQUESTS_PER_HOUR},
-        "contact": {"email": "support@videolyze.tech"},
-        "monitoring": {
-            "metrics": "/metrics",
-            "health": "/health"
-        }
-    }
 
 # =========================
 # Production security
