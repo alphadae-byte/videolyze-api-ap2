@@ -27,6 +27,10 @@ from prometheus_client import Counter, Histogram, Gauge, generate_latest
 from openai import OpenAI
 from googleapiclient.discovery import build
 
+def hash_api_key(api_key: str) -> str:
+    """Hash API key pour les métriques (privacy)"""
+    return hashlib.sha256(api_key.encode()).hexdigest()[:8]
+    
 # =========================
 # 💵 Billing système complet
 # =========================
