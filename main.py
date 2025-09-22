@@ -31,7 +31,9 @@ def create_stripe_usage_record(api_key: str, amount_usd: float, meta: Dict[str, 
         logger.info(f"Stripe usage record créé: {usage_record.id} pour {hash_api_key(api_key)}")
         
     except stripe.error.StripeError as e:
-        logger.errorimport os
+        logger.error ("message d'erreur")
+        
+import os
 import re
 import json
 import time
