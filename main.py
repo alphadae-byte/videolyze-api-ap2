@@ -10,7 +10,7 @@ import redis
 import logging
 import stripe
 import random
-import asyncpg
+#import asyncpg
 import asyncio
 from collections import defaultdict
 from typing import List, Optional, Dict, Any
